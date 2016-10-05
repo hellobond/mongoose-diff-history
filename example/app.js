@@ -10,6 +10,7 @@ var oneDay = 86400000;
 
 // Local routes
 var employees = require("./routes/employees");
+var managers = require('./routes/managers');
 
 
 var mongoose = require("mongoose");
@@ -53,6 +54,7 @@ app.use(express.static(path.join(__dirname, "public"), { maxAge: oneDay}));
 // Local routes
 //app.use("/", routes);
 app.use("/employees", employees);
+app.use("/managers", managers);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
