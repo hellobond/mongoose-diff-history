@@ -1,3 +1,5 @@
+var mongoose = require('mongoose');
+var historySchema = require('./diffHistorySchema');
 var History = require("./diffHistoryModel");
 var async = require("async");
 var jsondiffpatch = require("jsondiffpatch").create();
@@ -11,16 +13,16 @@ var saveHistoryObject = function (history, callback){
     });
 };
 
-var saveDiffObject = function(currentObject, original, updated, user, reason, callback){
+var saveDiffObject = function(currentObject, original, updated, user, reason, DiffHistoryModel, callback){
     var diff = jsondiffpatch.diff(JSON.parse(JSON.stringify(original)),
         JSON.parse(JSON.stringify(updated)));
     if (diff) {
-        History.findOne({collectionName: currentObject.constructor.modelName, collectionId: currentObject._id}).sort("-version").exec(function (err, lastHistory) {
+        DiffHistoryModel.findOne().sort("-version").exec(function (err, lastHistory) {
             if (err) {
                 err.message = "Mongo Error :" + err.message;
                 return callback();
             }
-            var history = new History({
+            var history = new DiffHistoryModel({
                 collectionName: currentObject.constructor.modelName,
                 collectionId: currentObject._id,
                 diff: diff,
@@ -36,7 +38,7 @@ var saveDiffObject = function(currentObject, original, updated, user, reason, ca
     }
 };
 
-var saveDiffHistory = function(queryObject, currentObject, callback) {
+var saveDiffHistory = function(queryObject, currentObject, DiffHistoryModel, callback) {
     currentObject.constructor.findOne({_id: currentObject._id}, function (err, selfObject) {
         if(selfObject){
             var dbObject = {}, updateParams;
@@ -44,14 +46,14 @@ var saveDiffHistory = function(queryObject, currentObject, callback) {
             Object.keys(updateParams).forEach(function(key) {
                 dbObject[key] = selfObject[key];
             });
-            saveDiffObject(currentObject, dbObject, updateParams, queryObject.options.__user, queryObject.options.__reason, function(){
+            saveDiffObject(currentObject, dbObject, updateParams, queryObject.options.__user, queryObject.options.__reason, DiffHistoryModel, function(){
                 callback();
             });
         }
     });
 };
 
-var saveDiffs = function(self, next) {
+var saveDiffs = function(self, DiffHistoryModel, next) {
     var queryObject = self;
     queryObject.find(queryObject._conditions, function (err, results) {
         if (err) {
@@ -63,7 +65,7 @@ var saveDiffs = function(self, next) {
                 err.message = "Mongo Error :" + err.message;
                 return next();
             }
-            saveDiffHistory(queryObject, result, callback);
+            saveDiffHistory(queryObject, result, DiffHistoryModel, callback);
         }, function done() {
             return next();
         });
@@ -97,7 +99,7 @@ var getVersion = function (model, id, version, callback) {
     });
 };
 
-var getHistories = function (modelName, id, expandableFields, callback) {
+var getHistories = function (modelName, id, exapndableFields, callback) {
     History.find({collectionName: modelName, collectionId: id}, function (err, histories) {
         if (err) {
             console.error(err);
@@ -109,7 +111,7 @@ var getHistories = function (modelName, id, expandableFields, callback) {
             for (var key in history.diff) {
                 if (history.diff.hasOwnProperty(key)) {
 
-                    if (expandableFields.indexOf(key) > -1) {
+                    if (exapndableFields.indexOf(key) > -1) {
                         //var oldDate = new Date(history.diff[key][0]);
                         //var newDate = new Date(history.diff[key][1]);
                         //if (oldDate != "Invalid Date" && newDate != "Invalid Date") {
@@ -130,10 +132,9 @@ var getHistories = function (modelName, id, expandableFields, callback) {
             var comment = "modified " + changedFields.concat(changedValues).join(", ");
             return mapCallback(null, {
                 changedBy: history.user,
-                changedAt: history.createdAt,
-                updatedAt: history.updatedAt,
+                changedAt: history.created_at,
                 reason: history.reason,
-                comment: comment
+                commment: comment
             })
         }, function (err, output) {
             if (err) {
@@ -147,33 +148,31 @@ var getHistories = function (modelName, id, expandableFields, callback) {
 
 var plugin = function lastModifiedPlugin(schema, options) {
 
+    let DiffHistoryModel = options.diffModelName ? mongoose.model(options.diffModelName, historySchema) : History;
+
     schema.pre("save", function (next) {
         var self = this;
-        if(self.isNew) {
-            next();
-        }else{
-            self.constructor.findOne({_id: self._id}, function (err, original) {
-                saveDiffObject(self, original, self, self.__user, self.__reason, function(){
-                    next();
-                });
+        self.constructor.findOne({_id: self._id}, function (err, original) {
+            saveDiffObject(self, original, self, self.__user, self.__reason, DiffHistoryModel, function(){
+                next();
             });
-        }
+        });
     });
 
     schema.pre("findOneAndUpdate", function (next) {
-        saveDiffs(this, function(){
+        saveDiffs(this, DiffHistoryModel, function(){
             next();
         });
     });
 
     schema.pre("update", function (next) {
-        saveDiffs(this, function(){
+        saveDiffs(this, DiffHistoryModel, function(){
             next();
         });
     });
 
     schema.pre("remove", function(next) {
-        saveDiffObject(this, this, {}, this.__user, this.__reason, function(){
+        saveDiffObject(this, this, {}, this.__user, this.__reason, DiffHistoryModel, function(){
             next();
         })
     });
