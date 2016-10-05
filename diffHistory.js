@@ -152,15 +152,11 @@ var plugin = function lastModifiedPlugin(schema, options) {
 
     schema.pre("save", function (next) {
         var self = this;
-        if(self.isNew) {
-            next();
-        }else{
-            self.constructor.findOne({_id: self._id}, function (err, original) {
-                saveDiffObject(self, original, self, self.__user, self.__reason, DiffHistoryModel, function(){
-                    next();
-                });
+        self.constructor.findOne({_id: self._id}, function (err, original) {
+            saveDiffObject(self, original, self, self.__user, self.__reason, DiffHistoryModel, function(){
+                next();
             });
-        }
+        });
     });
 
     schema.pre("findOneAndUpdate", function (next) {

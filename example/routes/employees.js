@@ -46,7 +46,7 @@ router.put("/update/:employeeId", function (req, res, next) {
         Employee.update({employeeId: req.params.employeeId}, req.body, {
             new: true,
             __user: {name: "Mimani", role: "admin"},
-            __reason: "Mimani updated"
+            __reason: "regular updated"
         }, function (errFind, updatedEmp) {
             if (errFind) {
                 res.sendStatus(500);
